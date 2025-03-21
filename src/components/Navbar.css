@@ -1,0 +1,12 @@
+label {
+    font: bold 1.1rem;
+    padding: 10px 0 10px 0;
+   }
+   a {
+    text-decoration: none;
+    font-size: small
+   }
+   
+   .image {
+     max-width: 300px;
+   }
