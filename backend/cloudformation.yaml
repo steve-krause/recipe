@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Recipes API Gateway with Lambda Integration'
+
+Resources:
+  # Lambda Function Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+      - PolicyName: DynamoDBAccess
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Scan
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+              Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Recipes'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # Lambda Function
+  BackendFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: cf-store-150488752423  
+        S3Key: index.zip
+      MemorySize: 128
+      Timeout: 10
+
+
+  # HTTP API
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: RECIPES_API
+      ProtocolType: HTTP
+      Description: HTTP API for Recipes table operations
+
+  # API Integration
+  HttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt BackendFunction.Arn
+      PayloadFormatVersion: '2.0'
+      IntegrationMethod: POST
+
+  # API Route for all methods
+  HttpApiRouteGetAllRecipes:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'GET /recipes'
+      Target: !Join 
+        - /
+        - - integrations
+          - !Ref HttpApiIntegration
+
+  HttpApiRouteGetRecipeById:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'GET /recipes/{id}'
+      Target: !Join 
+        - /
+        - - integrations
+          - !Ref HttpApiIntegration
+
+  HttpApiRouteAddRecipe:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'PUT /recipes'
+      Target: !Join 
+        - /
+        - - integrations
+          - !Ref HttpApiIntegration
+
+  HttpApiRouteAddListItem:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'PUT /recipes/{id}/{list_name}'
+      Target: !Join 
+        - /
+        - - integrations
+          - !Ref HttpApiIntegration
+
+  HttpApiRouteUpdateRecipe:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /recipes/{id}'
+      Target: !Join 
+        - /
+        - - integrations
+          - !Ref HttpApiIntegration
+
+  HttpApiRouteUpdateListItem:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /recipes/{id}/{list_name}/{index}'
+      Target: !Join 
+        - /
+        - - integrations
+          - !Ref HttpApiIntegration
+
+  HttpApiRouteDeleteRecipe:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'DELETE /recipes/{id}'
+      Target: !Join 
+        - /
+        - - integrations
+          - !Ref HttpApiIntegration
+
+  HttpApiRouteDeleteListItem:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'DELETE /recipes/{id}/{list_name}/{index}'
+      Target: !Join 
+        - /
+        - - integrations
+          - !Ref HttpApiIntegration
+
+  # API Stage
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  # Lambda Permission
+  LambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BackendFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Join 
+        - ''
+        - - 'arn:aws:execute-api:'
+          - !Ref AWS::Region
+          - ':'
+          - !Ref AWS::AccountId
+          - ':'
+          - !Ref HttpApi
+          - '/*'
+
+Outputs:
+  ApiEndpoint:
+    Description: API Endpoint URL
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
